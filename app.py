@@ -1,84 +1,80 @@
-from flask import Flask, json, jsonify, render_template
-from flask.wrappers import Response
-import pymongo
+# import necessary libraries
+from models import create_classes
+import os
+from flask import (
+    Flask,
+    render_template,
+    jsonify,
+    request,
+    redirect)
 
+#################################################
+# Flask Setup
+#################################################
 app = Flask(__name__)
 
-# setup mongo connection
-conn = "mongodb://localhost:27017"
-client = pymongo.MongoClient(conn)
+#################################################
+# Database Setup
+#################################################
 
-# connect to mongo db and collection
-db = client.Olympic_data
-BarChart = db.Barchart_DB
-GenderOverTime = db.GenderOverTime_DB
-MapData = db.MapData_DB
-MedalsOverTime = db.MedalsOverTime_DB
-All_Data = db.AllData_DB
+from flask_sqlalchemy import SQLAlchemy
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', '') or "sqlite:///db.sqlite"
 
+# Remove tracking modifications
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
+Pet = create_classes(db)
+
+# create route that renders index.html template
 @app.route("/")
-def welcome():
+def home():
     return render_template("index.html")
 
-@app.route("/api/1/BarChart", methods = ["GET"])
-def api_output_barchart():
-    try:
-        print("this works")
-        return jsonify(f'{list(BarChart.find())}')
-    except Exception as ex:
-        print(ex)
-        return Response(
-            response= json.dumps({"message":"Messed up"}),
-            status = 500
-        )
 
-@app.route("/api/1/GenderOverTime", methods = ["GET"])
-def api_output_genderovertime():
-    try:
-        print("this works")
-        return jsonify(f'{list(GenderOverTime.find())}')
-    except Exception as ex:
-        print(ex)
-        return Response(
-            response= json.dumps({"message":"Messed up"}),
-            status = 500
-        )
+# Query the database and send the jsonified results
+@app.route("/send", methods=["GET", "POST"])
+def send():
+    if request.method == "POST":
+        name = request.form["petName"]
+        lat = request.form["petLat"]
+        lon = request.form["petLon"]
 
-@app.route("/api/1/MapData", methods = ["GET"])
-def api_output_mapdata():
-    try:
-        print("this works")
-        return jsonify(f'{list(MapData.find())}')
-    except Exception as ex:
-        print(ex)
-        return Response(
-            response= json.dumps({"message":"Messed up"}),
-            status = 500
-        )
+        pet = Pet(name=name, lat=lat, lon=lon)
+        db.session.add(pet)
+        db.session.commit()
+        return redirect("/", code=302)
 
-@app.route("/api/1/MedalsOverTime", methods = ["GET"])
-def api_output_medalsovertime():
-    try:
-        print("this works")
-        return jsonify(f'{list(MedalsOverTime.find())}')
-    except Exception as ex:
-        print(ex)
-        return Response(
-            response= json.dumps({"message":"Messed up"}),
-            status = 500
-        )
+    return render_template("form.html")
 
-@app.route("/api/1/AllData", methods = ["GET"])
-def api_output_AllData():
-    try:
-        print("this works")
-        return jsonify(f'{list(All_Data.find())}')
-    except Exception as ex:
-        print(ex)
-        return Response(
-            response= json.dumps({"message":"Messed up"}),
-            status = 500
-        )
+
+@app.route("/api/pals")
+def pals():
+    results = db.session.query(Pet.name, Pet.lat, Pet.lon).all()
+
+    hover_text = [result[0] for result in results]
+    lat = [result[1] for result in results]
+    lon = [result[2] for result in results]
+
+    pet_data = [{
+        "type": "scattergeo",
+        "locationmode": "USA-states",
+        "lat": lat,
+        "lon": lon,
+        "text": hover_text,
+        "hoverinfo": "text",
+        "marker": {
+            "size": 50,
+            "line": {
+                "color": "rgb(8,8,8)",
+                "width": 1
+            },
+        }
+    }]
+
+    return jsonify(pet_data)
+
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
